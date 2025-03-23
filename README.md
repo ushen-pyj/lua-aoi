@@ -11,9 +11,7 @@
 │   ├── c/           # C 代码
 │   │   └── aoi_manager.c  # AOI 管理器
 │   └── lua/         # Lua 代码
-│       ├── aoi.lua      # AOI 对象管理
-│       ├── player.lua   # 玩家对象
-│       └── server.lua   # WebSocket 服务器
+│   └── luac/        # c编译的可供lua调用的库
 ├── CMakeLists.txt   # CMake 构建文件
 └── README.md        # 项目说明文档
 ```
@@ -22,12 +20,9 @@
 
 - AOI 系统集成
 - Lua 回调函数支持
-- 玩家对象管理
-- WebSocket 服务器
-- 实时位置同步
+- 位置同步
 
 ## 构建要求
 
 - CMake 3.10+
 - Lua 5.4+
-- libuv (用于 WebSocket 支持)
