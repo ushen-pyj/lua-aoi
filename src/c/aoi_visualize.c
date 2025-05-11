@@ -23,7 +23,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 #define ENTITY_SIZE 5
 #define MAX_ENTITIES 1000
 #define AOI_RADIUS 30.0f 
-#define AOI_VISUAL_RADIUS 50.0f
 
 // 全局日志文件
 FILE *logFile = NULL;
@@ -152,42 +151,13 @@ void draw_entity(SDL_Renderer *renderer, int index) {
     SDL_RenderFillRect(renderer, &rect);
     
     if (strcmp(e->mode, "w") == 0 || strcmp(e->mode, "wm") == 0) {
-        SDL_SetRenderDrawColor(renderer, 100, 100, 255, 100);
-        
+        SDL_SetRenderDrawColor(renderer, 255, 255, 0, 200);
+        int radius = (int)AOI_RADIUS;
         int x0 = (int)e->pos[0];
         int y0 = (int)e->pos[1];
-        int radius = (int)AOI_VISUAL_RADIUS; 
-        
         int x = radius;
         int y = 0;
         int err = 0;
-        
-        while (x >= y) {
-            SDL_RenderDrawPoint(renderer, x0 + x, y0 + y);
-            SDL_RenderDrawPoint(renderer, x0 + y, y0 + x);
-            SDL_RenderDrawPoint(renderer, x0 - y, y0 + x);
-            SDL_RenderDrawPoint(renderer, x0 - x, y0 + y);
-            SDL_RenderDrawPoint(renderer, x0 - x, y0 - y);
-            SDL_RenderDrawPoint(renderer, x0 - y, y0 - x);
-            SDL_RenderDrawPoint(renderer, x0 + y, y0 - x);
-            SDL_RenderDrawPoint(renderer, x0 + x, y0 - y);
-            
-            if (err <= 0) {
-                y += 1;
-                err += 2*y + 1;
-            }
-            
-            if (err > 0) {
-                x -= 1;
-                err -= 2*x + 1;
-            }
-        }
-        
-        SDL_SetRenderDrawColor(renderer, 255, 255, 0, 200);
-        radius = (int)AOI_RADIUS;
-        x = radius;
-        y = 0;
-        err = 0;
         
         while (x >= y) {
             SDL_RenderDrawPoint(renderer, x0 + x, y0 + y);
