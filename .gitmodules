@@ -1,6 +1,0 @@
-[submodule "aoi"]
-	path = aoi
-	url = https://github.com/cloudwu/aoi.git
-[submodule "3rd/lua"]
-	path = 3rd/lua
-	url = https://github.com/lua/lua.git

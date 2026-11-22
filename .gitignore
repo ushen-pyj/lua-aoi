@@ -1,5 +1,5 @@
-CMakeCache.txt
-CMakeFiles/*
-cmake_install.cmake
-.vscode/*
-src/luac/*
+/src/luac/
+/.vscode/
+# Local checkouts from the former submodules
+/aoi/
+/3rd/lua/

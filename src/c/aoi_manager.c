@@ -1,163 +1,200 @@
+#include <float.h>
+#include <limits.h>
+#include <stdint.h>
+
 #include <lua.h>
 #include <lauxlib.h>
-#include <lualib.h>
-#include <stdlib.h>
-#include <string.h>
 #include "aoi.h"
 
 #define AOI_METATABLE "aoi.manager"
 
-typedef struct {
-    struct aoi_space *space;
-    lua_State *L;
-    int callback_ref;
-    struct {
-        uint32_t *watchers;
-        uint32_t *markers;
-        size_t count;
-        size_t max_size;
-    } pairs;
-} aoi_manager_t;
-
-static void aoi_callback(void *ud, uint32_t watcher, uint32_t marker) {
-    aoi_manager_t *manager = (aoi_manager_t *)ud;
-    
-    if (manager->pairs.count >= manager->pairs.max_size) {
-        memmove(manager->pairs.watchers, manager->pairs.watchers + 1, 
-                (manager->pairs.max_size - 1) * sizeof(uint32_t));
-        memmove(manager->pairs.markers, manager->pairs.markers + 1, 
-                (manager->pairs.max_size - 1) * sizeof(uint32_t));
-        manager->pairs.count = manager->pairs.max_size - 1;
-    }
-    
-    manager->pairs.watchers[manager->pairs.count] = watcher;
-    manager->pairs.markers[manager->pairs.count] = marker;
-    manager->pairs.count++;
-}
-
-static int lua_aoi_create(lua_State *L) {
-    size_t max_size = luaL_optinteger(L, 1, 1024);
-    
-    aoi_manager_t *manager = lua_newuserdata(L, sizeof(aoi_manager_t));
-    manager->space = aoi_new();
-    manager->L = L;
-    manager->callback_ref = LUA_REFNIL;
-    
-    manager->pairs.watchers = malloc(max_size * sizeof(uint32_t));
-    manager->pairs.markers = malloc(max_size * sizeof(uint32_t));
-    manager->pairs.count = 0;
-    manager->pairs.max_size = max_size;
-    
-    if (!manager->pairs.watchers || !manager->pairs.markers) {
-        free(manager->pairs.watchers);
-        free(manager->pairs.markers);
-        return luaL_error(L, "内存分配失败");
-    }
-    
-    luaL_getmetatable(L, AOI_METATABLE);
-    lua_setmetatable(L, -2);
-    
-    return 1;
-}
-
-static int lua_aoi_register(lua_State *L) {
-    aoi_manager_t *manager = luaL_checkudata(L, 1, AOI_METATABLE);
-    
-    if (manager->callback_ref != LUA_REFNIL) {
-        luaL_unref(L, LUA_REGISTRYINDEX, manager->callback_ref);
-    }
-    
-    lua_pushvalue(L, 2);
-    manager->callback_ref = luaL_ref(L, LUA_REGISTRYINDEX);
-    return 0;
-}
-
-static int lua_aoi_remove(lua_State *L) {
-    aoi_manager_t *manager = luaL_checkudata(L, 1, AOI_METATABLE);
-    uint32_t id = luaL_checkinteger(L, 2);
-    
-    float pos[3] = {0, 0, 0};
-    aoi_update(manager->space, id, "d", pos);
-    return 0;
-}
-
-static int lua_aoi_update(lua_State *L) {
-    aoi_manager_t *manager = luaL_checkudata(L, 1, AOI_METATABLE);
-    uint32_t id = luaL_checkinteger(L, 2);
-    float x = luaL_checknumber(L, 3);
-    float y = luaL_checknumber(L, 4);
-    const char *mode = luaL_checkstring(L, 5);
-    
-    float pos[3] = {x, y, 0};
-    aoi_update(manager->space, id, mode, pos);
-    return 0;
-}
-
-static int lua_aoi_gc(lua_State *L) {
-    aoi_manager_t *manager = luaL_checkudata(L, 1, AOI_METATABLE);
-    
-    if (manager->callback_ref != LUA_REFNIL) {
-        luaL_unref(L, LUA_REGISTRYINDEX, manager->callback_ref);
-    }
-    
-    free(manager->pairs.watchers);
-    free(manager->pairs.markers);
-    
-    aoi_release(manager->space);
-    return 0;
-}
-
-static int lua_aoi_message(lua_State *L) {
-    aoi_manager_t *manager = luaL_checkudata(L, 1, AOI_METATABLE);
-    
-    manager->pairs.count = 0;
-    
-    aoi_message(manager->space, aoi_callback, manager);
-    
-    if (manager->callback_ref != LUA_REFNIL) {
-        lua_rawgeti(manager->L, LUA_REGISTRYINDEX, manager->callback_ref);
-        
-        lua_createtable(L, manager->pairs.count, 0);
-        
-        for (size_t i = 0; i < manager->pairs.count; i++) {
-            lua_createtable(L, 2, 0);
-            
-            lua_pushnumber(L, manager->pairs.watchers[i]);
-            lua_rawseti(L, -2, 1);
-            
-            lua_pushnumber(L, manager->pairs.markers[i]);
-            lua_rawseti(L, -2, 2);
-            
-            lua_rawseti(L, -2, i + 1);
-        }
-        
-        if (lua_pcall(manager->L, 1, 0, 0) != 0) {
-            fprintf(stderr, "Error in AOI callback: %s\n", lua_tostring(manager->L, -1));
-            lua_pop(manager->L, 1);
-        }
-    }
-    
-    return 0;
-}
-
-static const struct luaL_Reg aoi_methods[] = {
-    {"create", lua_aoi_create},
-    {"register", lua_aoi_register},
-    {"remove", lua_aoi_remove},
-    {"update", lua_aoi_update},
-    {"message", lua_aoi_message},
-    {NULL, NULL}
+struct pair {
+	uint32_t watcher;
+	uint32_t marker;
 };
 
-int luaopen_luaaoi(lua_State *L) {
-    luaL_newmetatable(L, AOI_METATABLE);
-    lua_pushvalue(L, -1);
-    lua_setfield(L, -2, "__index");
-    luaL_setfuncs(L, aoi_methods, 0);
-    lua_pushcfunction(L, lua_aoi_gc);
-    lua_setfield(L, -2, "__gc");
-    lua_pop(L, 1);
-    
-    luaL_newlib(L, aoi_methods);
-    return 1;
+struct manager {
+	struct aoi_space *space;
+	size_t capacity;
+};
+
+struct batch {
+	size_t capacity;
+	size_t next;
+	size_t count;
+	struct pair pairs[];
+};
+
+static struct manager *
+check_manager(lua_State *L) {
+	struct manager *m = luaL_checkudata(L, 1, AOI_METATABLE);
+	luaL_argcheck(L, m->space != NULL, 1, "manager is closed");
+	return m;
+}
+
+static uint32_t
+check_id(lua_State *L) {
+	lua_Integer id = luaL_checkinteger(L, 2);
+	/* Reserve UINT32_MAX for compatibility with the original AOI map. */
+	luaL_argcheck(L, id >= 0 && (lua_Unsigned)id < UINT32_MAX, 2, "invalid object id");
+	return (uint32_t)id;
+}
+
+static float
+check_coordinate(lua_State *L, int index) {
+	lua_Number n = luaL_checknumber(L, index);
+	luaL_argcheck(L, n >= -FLT_MAX && n <= FLT_MAX, index, "invalid coordinate");
+	return (float)n;
+}
+
+static int
+lcreate(lua_State *L) {
+	lua_Integer cap = luaL_optinteger(L, 1, 1024);
+	luaL_argcheck(L, cap > 0 && cap <= INT_MAX &&
+		(lua_Unsigned)cap <= (SIZE_MAX - sizeof(struct batch)) / sizeof(struct pair),
+		1, "invalid event capacity");
+	struct manager *m = lua_newuserdatauv(L, sizeof(*m), 2);
+	m->space = NULL;
+	m->capacity = (size_t)cap;
+	luaL_setmetatable(L, AOI_METATABLE);
+	m->space = aoi_new();
+	if (!m->space)
+		return luaL_error(L, "out of memory");
+	return 1;
+}
+
+static int
+lregister(lua_State *L) {
+	check_manager(L);
+	if (!lua_isnil(L, 2))
+		luaL_checktype(L, 2, LUA_TFUNCTION);
+	lua_pushvalue(L, 2);
+	lua_setiuservalue(L, 1, 1);
+	return 0;
+}
+
+static int
+lremove(lua_State *L) {
+	struct manager *m = check_manager(L);
+	uint32_t id = check_id(L);
+	float pos[3] = {0};
+	aoi_update(m->space, id, "d", pos);
+	return 0;
+}
+
+static int
+lupdate(lua_State *L) {
+	struct manager *m = check_manager(L);
+	uint32_t id = check_id(L);
+	float pos[3] = { check_coordinate(L, 3), check_coordinate(L, 4), 0 };
+	size_t len;
+	luaL_checktype(L, 5, LUA_TSTRING);
+	const char *mode = luaL_checklstring(L, 5, &len);
+	for (size_t i = 0; i < len; ++i) {
+		luaL_argcheck(L, mode[i] == 'm' || mode[i] == 'w' || mode[i] == 'd',
+			5, "invalid AOI mode");
+	}
+	if (!aoi_update(m->space, id, mode, pos))
+		return luaL_error(L, "out of memory");
+	return 0;
+}
+
+static int
+lclose(lua_State *L) {
+	struct manager *m = luaL_checkudata(L, 1, AOI_METATABLE);
+	if (m->space) {
+		aoi_release(m->space);
+		m->space = NULL;
+		lua_pushnil(L);
+		lua_setiuservalue(L, 1, 1);
+		lua_pushnil(L);
+		lua_setiuservalue(L, 1, 2);
+	}
+	return 0;
+}
+
+static void
+collect_pair(void *ud, uint32_t watcher, uint32_t marker) {
+	struct batch *m = ud;
+	if (!m)
+		return;
+	m->pairs[m->next] = (struct pair){ watcher, marker };
+	if (++m->next == m->capacity)
+		m->next = 0;
+	if (m->count < m->capacity)
+		++m->count;
+}
+
+static int
+lmessage(lua_State *L) {
+	struct manager *m = check_manager(L);
+	if (lua_getiuservalue(L, 1, 1) == LUA_TNIL) {
+		if (!aoi_message(m->space, collect_pair, NULL))
+			return luaL_error(L, "out of memory");
+		return 0;
+	}
+
+	/* Anchor this call's buffer on its stack. A GC finalizer may call message
+	 * again while Lua allocates the result tables. */
+	int buffer = lua_gettop(L) + 1;
+	struct batch *batch;
+	size_t bytes = sizeof(*batch) + m->capacity * sizeof(struct pair);
+	if (lua_getiuservalue(L, 1, 2) != LUA_TUSERDATA || lua_rawlen(L, buffer) != bytes) {
+		lua_pop(L, 1);
+		batch = lua_newuserdatauv(L, bytes, 0);
+		check_manager(L);
+	} else {
+		batch = lua_touserdata(L, buffer);
+		lua_pushnil(L);
+		lua_setiuservalue(L, 1, 2);
+	}
+	batch->capacity = m->capacity;
+	batch->count = batch->next = 0;
+	if (!aoi_message(m->space, collect_pair, batch))
+		return luaL_error(L, "out of memory");
+
+	size_t count = batch->count;
+	size_t index = count == batch->capacity ? batch->next : 0;
+	lua_createtable(L, (int)count, 0);
+	for (size_t i = 0; i < count; ++i) {
+		struct pair p = batch->pairs[index];
+		lua_createtable(L, 2, 0);
+		lua_pushinteger(L, p.watcher);
+		lua_rawseti(L, -2, 1);
+		lua_pushinteger(L, p.marker);
+		lua_rawseti(L, -2, 2);
+		lua_rawseti(L, -2, (lua_Integer)i + 1);
+		if (++index == batch->capacity)
+			index = 0;
+	}
+	if (m->space) {
+		lua_pushvalue(L, buffer);
+		lua_setiuservalue(L, 1, 2);
+	}
+	lua_remove(L, buffer);
+	lua_call(L, 1, 0);
+	return 0;
+}
+
+static const luaL_Reg methods[] = {
+	{ "create", lcreate },
+	{ "register", lregister },
+	{ "remove", lremove },
+	{ "update", lupdate },
+	{ "message", lmessage },
+	{ "close", lclose },
+	{ NULL, NULL },
+};
+
+int
+luaopen_luaaoi(lua_State *L) {
+	luaL_checkversion(L);
+	luaL_newlib(L, methods);
+	luaL_newmetatable(L, AOI_METATABLE);
+	lua_pushcfunction(L, lclose);
+	lua_setfield(L, -2, "__gc");
+	lua_pushvalue(L, -2);
+	lua_setfield(L, -2, "__index");
+	lua_pop(L, 1);
+	return 1;
 }

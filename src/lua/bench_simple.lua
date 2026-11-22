@@ -26,7 +26,7 @@ end
 
 -- 初始化对象数据
 local function init_objects()
-    math.randomseed(os.time())
+    math.randomseed(tonumber(arg[1]) or 12345)
     
     for i = 1, NUM_OBJECTS do
         objects[i] = {
@@ -121,4 +121,4 @@ print(string.format("每秒平均处理对象数: %.0f", NUM_OBJECTS * NUM_ITERA
 print(string.format("每帧平均更新时间: %.3f 毫秒", update_time * 1000 / NUM_ITERATIONS))
 print(string.format("每帧平均消息处理时间: %.3f 毫秒", message_time * 1000 / NUM_ITERATIONS))
 
-print("\n基准测试完成!") 
+print("\n基准测试完成!")
