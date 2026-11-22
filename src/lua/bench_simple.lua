@@ -2,7 +2,6 @@
 package.cpath = package.cpath .. ";./src/luac/?.so"
 
 local aoi = require "luaaoi"
-
 -- 配置参数
 local NUM_OBJECTS = 5000        -- 测试对象数量
 local WORLD_SIZE = 1000         -- 世界大小
@@ -18,11 +17,6 @@ local total_time = 0
 local update_time = 0
 local message_time = 0
 local start_time, end_time
-
--- AOI事件回调函数
-local function on_aoi_event(pairs)
-    message_count = message_count + #pairs
-end
 
 -- 初始化对象数据
 local function init_objects()
@@ -74,7 +68,7 @@ print("世界大小:", WORLD_SIZE)
 
 -- 创建AOI管理器
 local manager = aoi.create(100000)
-manager:register(on_aoi_event)
+local out = {}
 
 -- 初始化对象
 print("初始化对象...")
@@ -89,8 +83,6 @@ print("开始测试...")
 start_time = os.clock()
 
 for i = 1, NUM_ITERATIONS do
-    local iter_start = os.clock()
-    
     -- 更新对象
     local update_start = os.clock()
     update_objects(manager)
@@ -98,8 +90,7 @@ for i = 1, NUM_ITERATIONS do
     
     -- 处理消息
     local message_start = os.clock()
-    message_count = 0
-    manager:message()
+    message_count = message_count + manager:message(out)
     message_time = message_time + (os.clock() - message_start)
     
     -- 进度报告
@@ -113,6 +104,7 @@ total_time = end_time - start_time
 
 -- 打印结果
 print("\n=== 测试结果 ===")
+print("总事件数", message_count)
 print(string.format("总运行时间: %.3f 秒", total_time))
 print(string.format("对象更新时间: %.3f 秒 (%.1f%%)", update_time, update_time / total_time * 100))
 print(string.format("消息处理时间: %.3f 秒 (%.1f%%)", message_time, message_time / total_time * 100))

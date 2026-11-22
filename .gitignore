@@ -1,5 +1,2 @@
 /src/luac/
 /.vscode/
-# Local checkouts from the former submodules
-/aoi/
-/3rd/lua/
